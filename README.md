@@ -1,7 +1,7 @@
 # Sobre este repositório
 
-Este repositório documenta minha jornada de aprendizado em
-cibersegurança.
+Este repositório reúne minhas anotações, laboratórios e estudos produzidos durante minha formação em cibersegurança.
+O conteúdo é desenvolvido para fins educacionais, com explicações próprias, análises técnicas e documentação de conceitos e cenários de laboratório.
 
 Meu objetivo é construir uma base sólida em segurança
 defensiva, análise de redes, investigação de incidentes e
