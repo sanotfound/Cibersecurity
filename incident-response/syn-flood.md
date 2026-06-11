@@ -1,47 +1,124 @@
-📂 Caso de ataque de DoS por SYN flood.
-Um ataque DoS do tipo SYN Flood se caracteriza pela quantidade anormal de pacotes SYN que um servidor recebe, de forma que ele se sobrecarregue por estar recebendo mais pacotes SYN do que normalmente suporta, tornando-o indisponível.
+# 🛡️ SYN Flood – Análise de um incidente de indisponibilidade
 
-📖 Contexto
+> **Objetivo:** Analisar um cenário de indisponibilidade de um servidor web e identificar, por meio da análise dos registros de rede, se o incidente é compatível com um ataque DoS do tipo SYN Flood.
 
-Um servidor web começou a apresentar erro "connection timeout".
-Os usuários não conseguiam acessar o serviço.
+---
 
+# 📖 Contexto
 
-🔍 Análise e Evidências
+Um servidor web começou a apresentar erro **"connection timeout"**, impedindo que os usuários acessassem o serviço.
 
-Quando os visitantes do site tentam estabelecer uma conexão com o servidor web, ocorre um three-way handshake utilizando o protocolo TCP. 
+Durante a investigação, foi observado um grande volume de solicitações TCP SYN destinadas ao servidor. O objetivo desta análise é compreender como esse comportamento pode levar à indisponibilidade do serviço.
 
-Cliente envia solicitação de conexão com o servidor :
-   “42584->443 [SYN] Seq=0 Win-5792 Len=120…”
+---
 
-2.  Servidor recebe a solicitação de conexão e retorna confirmação de conexão
-   “443->42584 [SYN, ACK] Seq=0 Win-5792 Len=120…”
+# 🛠️ Tecnologias e conceitos envolvidos
 
-3. Cliente recebe a confirmação de conexão e obtém sucesso ao se conectar com o serviço usando o protocolo TCP:
-    “42584->443 [ACK] Seq=1 Win-5792 Len=120…”
+- TCP
+- Three-Way Handshake
+- Protocolo HTTP
+- Ataque DoS (Denial of Service)
+- Análise de logs de rede
 
-Portanto, o agente-mal intencionado se aproveitou da seguinte forma:
-1. Ao agente-mal intencionado enviar pacote SYN, o servidor recebe esse pacote
-2. O servidor responde ao SYN com um SYN-ACK e reserva recursos aguardando o ACK final do cliente. ,mas conforme mais solicitações SYN aparecem, mais o servidor reserva esses recursos e mais ele fica sobrecarregado.
-3. O ACK nunca chega porque o atacante não pretende concluir a conexão, e dessa forma, o servidor fica sobrecarregado pela quantidade de recursos que ele está reservando para cada solicitação SYN.
-4. Se o ACK nunca chega, a conexão fica semi-aberta
-E a partir disso, o servidor mantém milhares de conexões semi-abertas e esgotando seus recursos. Consequentemente, fazendo com que o servidor entre mau funcionamento e se torne inevitavelmente indisponível para qualquer pessoa. Qualquer funcionário que tentar acessar durante esse colapso não terá sucesso.
+---
 
+# 🔍 Análise
 
-💡 Hipóteses
+Quando um visitante tenta acessar um servidor web utilizando o protocolo TCP, ocorre o processo conhecido como **Three-Way Handshake**.
 
-Os logs indicam que, conforme este agente foi mandando mais e mais pacotes SYN, o servidor foi ficando sobrecarregado. A partir desta linha acima, a inundação SYN ficou ainda mais evidente, pois este IP de origem (que é diferente da rede local dos funcionários) manda vários pacotes SYN sucessivos para o servidor, sobrecarregando-o e consequentemente tornando o serviço indisponível pela falta de conexão com o servidor, como mostra requisições seguintes por funcionários legítimos:
+### 1. Cliente solicita uma conexão
 
-73 | 6.230548 | 192.0.2.1 | 198.51.100.16 | TCP | 443->32641 [RST, ACK] Seq=0 Win-5792 Len=120...
-103 | 17.429678 | 192.0.2.1 | 203.0.113.0 | TCP | 443->54770 [RST, ACK] Seq=1 Win=5792 Len=0...
-109 | 17.567768 | 192.0.2.1 | 203.0.113.0 | TCP | 443->54770 [RST, ACK] Seq=1 Win=5792 Len=0...
+```text
+42584 -> 443 [SYN] Seq=0 Win=5792 Len=120
+```
 
+O cliente envia um pacote **SYN**, solicitando o estabelecimento de uma conexão.
 
-🛡️ Mitigações
-Uma solução de bloqueio de IP não durará muito, pois um ataque deste tipo pode espalhar outros endereços IP para contornar esse bloqueio. 
-Além disso, métodos de criptografia TLS (como o HTTPS) não funcionaria, já que a conexão TCP precisa ser estabelecida antes de qualquer coisa, e o ataque acontece justamente durante a fase three-way handshake do protocolo TCP.
-A VPN não seria a melhor maneira pois só funcionaria em um cenário onde o servidor é acessível apenas por VPN, e dessa forma, o agente-mal intencionado não consegue atacar diretamente o servidor web, e para isso, ele precisaria se infiltrar e se autenticar na VPN para poder fazer isso, mas mesmo assim, a VPN reduz significativamente a superfície de ataque.
+### 2. Servidor responde à solicitação
 
-Uma boa forma de proteger a rede, impedindo que ataques desse tipo aconteçam novamente, é a implementação de um firewall de próxima geração (NGFW), pois ele pode ajudar a detectar padrões anormais de tráfego, aplicar políticas de filtragem e limitar conexões suspeitas, reduzindo os impactos de ataques de inundação SYN. Se for feita a implementação de um NGFW e o servidor acessível apenas por VPN, pode de fato realmente evitar este ataque ou diminuir drasticamente a superfície de ataque, já que estas duas ferramentas em conjunto pode elevar a postura de segurança dessa organização ainda mais.
+```text
+443 -> 42584 [SYN, ACK] Seq=0 Win=5792 Len=120
+```
 
+O servidor recebe o SYN e responde com um pacote **SYN-ACK**, reservando recursos internos enquanto aguarda a confirmação do cliente.
 
+### 3. Cliente confirma a conexão
+
+```text
+42584 -> 443 [ACK] Seq=1 Win=5792 Len=120
+```
+
+Após receber o ACK, a conexão é estabelecida e a comunicação pode continuar normalmente.
+
+---
+
+# 📋 Como ocorre o ataque
+
+Um ataque SYN Flood explora exatamente essa etapa do protocolo TCP.
+
+O agente mal-intencionado envia milhares de pacotes SYN para o servidor.
+
+Para cada pacote recebido:
+
+1. O servidor recebe o SYN.
+2. Responde com um SYN-ACK.
+3. Reserva recursos internos aguardando o ACK final.
+
+Entretanto, o atacante **nunca envia esse ACK**.
+
+Consequentemente:
+
+- milhares de conexões permanecem semi-abertas;
+- o servidor continua reservando recursos para conexões que nunca serão concluídas;
+- novos usuários legítimos deixam de ser atendidos;
+- o serviço torna-se indisponível.
+
+---
+
+# 📋 Evidências
+
+Durante a análise dos registros foi possível observar diversas tentativas de conexão fracassadas provenientes de usuários legítimos.
+
+```text
+73  | 6.230548  | 192.0.2.1 | 198.51.100.16 | TCP | 443->32641 [RST, ACK]
+
+103 | 17.429678 | 192.0.2.1 | 203.0.113.0   | TCP | 443->54770 [RST, ACK]
+
+109 | 17.567768 | 192.0.2.1 | 203.0.113.0   | TCP | 443->54770 [RST, ACK]
+```
+
+Esses registros demonstram que o servidor já não consegue estabelecer novas conexões normalmente, retornando pacotes **RST, ACK** para clientes legítimos.
+
+Embora um pacote **RST, ACK** isoladamente não seja evidência suficiente de um ataque SYN Flood, neste contexto ele reforça a hipótese de que o servidor encontra-se sobrecarregado e incapaz de aceitar novas conexões.
+
+---
+
+# 💡 Hipótese
+
+Com base na análise dos registros, o comportamento observado é compatível com um ataque **DoS do tipo SYN Flood**.
+
+O grande volume de solicitações SYN mantém diversas conexões semi-abertas, consumindo recursos do servidor até que este deixe de responder às novas conexões de usuários legítimos, gerando erros como **connection timeout**.
+
+---
+
+# 🛡️ Mitigações
+
+Bloquear apenas um endereço IP não é uma solução definitiva, pois ataques SYN Flood podem utilizar diversos endereços IP (ou endereços falsificados) para contornar esse bloqueio.
+
+Além disso, mecanismos como **TLS/HTTPS** não impedem esse tipo de ataque, pois a negociação criptográfica ocorre somente após o estabelecimento da conexão TCP, enquanto o ataque acontece justamente durante o Three-Way Handshake.
+
+O uso de uma **VPN** também não elimina completamente o problema, mas pode reduzir significativamente a superfície de ataque quando o serviço é acessível apenas por clientes autenticados.
+
+Uma abordagem mais eficaz inclui:
+
+- Implementação de um **Next Generation Firewall (NGFW)**;
+- Rate Limiting para conexões TCP;
+- SYN Cookies;
+- IDS/IPS para detecção de padrões anormais;
+- Monitoramento contínuo do tráfego de rede.
+
+Essas medidas ajudam a reduzir o impacto de ataques SYN Flood e aumentam a disponibilidade dos serviços.
+
+---
+
+> **Observação:** Este estudo foi desenvolvido para fins educacionais, utilizando um cenário controlado e registros de rede disponibilizados em laboratório de cibersegurança.
